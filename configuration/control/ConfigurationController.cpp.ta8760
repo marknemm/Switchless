@@ -1,0 +1,64 @@
+#include "configuration/control/ConfigurationController.h"
+#include "configuration/ui/ConfigurationDialogs.h"
+#include "image_util/ImageConverter.h"
+#include "image_util/Bounds.h"
+#include <QMessageBox>
+#include <iostream>
+
+
+ConfigurationController::ConfigurationController(ConfigurationToCentralControllerI *parent) :
+    ControllerI(parent),
+    _configToCentralControllerI(*parent),
+    _configMainWindow(*this)
+{}
+
+
+void ConfigurationController::transferControl(int status)
+{
+    _configMainWindow.showFullScreen();
+}
+
+
+QSize ConfigurationController::getStreamDisplaySize() const
+{
+    return _configMainWindow.getStreamDisplaySize();
+}
+
+
+void ConfigurationController::processNewFrame(cv::Mat &frame)
+{
+    static bool first = true;
+
+    QImage qFrame = ImageConverter::cvMatToQImage(frame);
+    _configMainWindow.setFrameAndUpdate(qFrame);
+
+    if (first)
+    {
+        first = false;
+        askSwitchType();
+    }
+}
+
+
+void ConfigurationController::reportSwitchHighlight(const QRect &highlightRect)
+{
+    _configMainWindow.enableSwitchHighlight(false);
+    cv::Rect cvHighlightRect = Bounds::qRectToCvRect(highlightRect);
+    _configToCentralControllerI.reportSwitchHighlight(cvHighlightRect);
+    bool proceed = ConfigurationDialogs::yesNoMessageBox(_configMainWindow, "Proceed Dialog",
+                                                         "Is the switch selection correct?");
+    if (proceed) {
+        _configMainWindow.setInstructionText("Perform Switch Activation Motion");
+    }
+    else {
+        _configMainWindow.enableSwitchHighlight(true); // restart.
+    }
+}
+
+
+void ConfigurationController::askSwitchType()
+{
+    SwitchType switchType = ConfigurationDialogs::switchTypeMessageBox(_configMainWindow);
+    _configToCentralControllerI.reportSwitchAddition(switchType);
+    _configMainWindow.enableSwitchHighlight(true);
+}
